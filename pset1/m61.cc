@@ -6,12 +6,15 @@
 #include <cinttypes>
 #include <cassert>
 #include <sys/mman.h>
+#include <map>
 
 
 struct m61_memory_buffer {
     char* buffer;
     size_t pos = 0;
     size_t size = 8 << 20; /* 8 MiB */
+    std::map<void*, size_t> active_sizes;
+    std::map<void*, size_t> size_allocation;
     m61_statistics stats;
 
     m61_memory_buffer();
@@ -45,25 +48,33 @@ m61_memory_buffer::~m61_memory_buffer() {
 ///    The memory is not initialized. If `sz == 0`, then m61_malloc may
 ///    return either `nullptr` or a pointer to a unique allocation.
 ///    The allocation request was made at source code location `file`:`line`.
-
+int valuefor16;
+size_t ValuePossible = 0;
 void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
+    ValuePossible = default_buffer.size - default_buffer.pos;
     if (sz == 0){
+    	return nullptr;
+    }
+    if ( ValuePossible <= sz) {
+        ++default_buffer.stats.nfail;
+        default_buffer.stats.fail_size = sz; 
     	return nullptr;
     }
     if (default_buffer.pos + sz > default_buffer.size) {
         // Not enough space left in default buffer for allocation
         ++default_buffer.stats.nfail;
+        default_buffer.stats.fail_size = sz; 
         return nullptr;
     }
-
     // Otherwise there is enough space; claim the next `sz` bytes
+    allocateInMaps(sz);
+    
+    valuefor16 = 16 - ((default_buffer.pos + sz) % 16);
     void* ptr = &default_buffer.buffer[default_buffer.pos];
-    default_buffer.pos += sz;
-    ++default_buffer.stats.nactive;
-    ++default_buffer.stats.ntotal;
-    default_buffer.stats.total_size += sz;
-    default_buffer.stats.active_size = default_buffer.pos;
+    default_buffer.pos += (sz + valuefor16);
+    
+    computeStatistics(sz);
     return ptr;
 }
 
@@ -90,9 +101,21 @@ void m61_free(void* ptr, const char* file, int line) {
 ///    memory is initialized to zero. The allocation request was at
 ///    location `file`:`line`. Returns `nullptr` if out of memory; may
 ///    also return `nullptr` if `count == 0` or `size == 0`.
-
+size_t value = 0;
 void* m61_calloc(size_t count, size_t sz, const char* file, int line) {
     // Your code here (not needed for first tests).
+    (void) file, (void) line;   // avoid uninitialized variable warnings
+    value = default_buffer.size / count;
+    
+    if ( sz > value){
+        ++default_buffer.stats.nfail;
+        default_buffer.stats.fail_size = sz; 
+       return nullptr;
+    }
+	
+    if (count == 0 || sz == 0) {
+       return nullptr;
+    }
     void* ptr = m61_malloc(count * sz, file, line);
     if (ptr) {
         memset(ptr, 0, count * sz);
@@ -130,3 +153,22 @@ void m61_print_statistics() {
 void m61_print_leak_report() {
     // Your code here.
 }
+
+void allocateInMaps(size_t sz) {
+   /// default_buffer.size_allocation.insert(std::pair<void*,size_t>( default_buffer.pos, sz));
+  ///  default_buffer.active_sizes.insert(std::pair<void*,size_t>( default_buffer.pos,sz));
+}
+
+void computeStatistics(size_t sz){
+    ++default_buffer.stats.nactive;
+    ++default_buffer.stats.ntotal;
+    default_buffer.stats.total_size += sz;
+    default_buffer.stats.active_size = default_buffer.stats.total_size  - default_buffer.stats.heap_min;
+}
+
+void calculatePositionFor16AligementsBytes(size_t sz){
+
+    return ;
+
+}
+
