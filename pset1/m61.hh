@@ -82,7 +82,8 @@ inline T uniform_int(T min, T max, Engine& randomness) {
 
 ///Built by Me
 
-void calculatePositionFor16AligementsBytes(size_t sz);
+void* calculatePositionFor16AligementsBytes(size_t sz);
 void computeStatistics(size_t sz);
 void allocateInMaps(size_t sz);
+bool checkIfPossibleToAllocate(size_t sz);
 #endif

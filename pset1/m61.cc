@@ -48,32 +48,16 @@ m61_memory_buffer::~m61_memory_buffer() {
 ///    The memory is not initialized. If `sz == 0`, then m61_malloc may
 ///    return either `nullptr` or a pointer to a unique allocation.
 ///    The allocation request was made at source code location `file`:`line`.
-int valuefor16;
-size_t ValuePossible = 0;
+
 void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    ValuePossible = default_buffer.size - default_buffer.pos;
-    if (sz == 0){
+
+    if (!checkIfPossibleToAllocate(sz)){
     	return nullptr;
-    }
-    if ( ValuePossible <= sz) {
-        ++default_buffer.stats.nfail;
-        default_buffer.stats.fail_size = sz; 
-    	return nullptr;
-    }
-    if (default_buffer.pos + sz > default_buffer.size) {
-        // Not enough space left in default buffer for allocation
-        ++default_buffer.stats.nfail;
-        default_buffer.stats.fail_size = sz; 
-        return nullptr;
     }
     // Otherwise there is enough space; claim the next `sz` bytes
     allocateInMaps(sz);
-    
-    valuefor16 = 16 - ((default_buffer.pos + sz) % 16);
-    void* ptr = &default_buffer.buffer[default_buffer.pos];
-    default_buffer.pos += (sz + valuefor16);
-    
+    void* ptr = calculatePositionFor16AligementsBytes(sz);
     computeStatistics(sz);
     return ptr;
 }
@@ -165,10 +149,35 @@ void computeStatistics(size_t sz){
     default_buffer.stats.total_size += sz;
     default_buffer.stats.active_size = default_buffer.stats.total_size  - default_buffer.stats.heap_min;
 }
+int valuefor16;
+void* calculatePositionFor16AligementsBytes(size_t sz){
 
-void calculatePositionFor16AligementsBytes(size_t sz){
+    valuefor16 = 16 - ((default_buffer.pos + sz) % 16);
+    void* ptr = &default_buffer.buffer[default_buffer.pos];
+    default_buffer.pos += (sz + valuefor16);
+   return ptr;
+}
 
-    return ;
+size_t ValuePossible = 0;
+bool checkIfPossibleToAllocate(size_t sz){
+    ValuePossible = default_buffer.size - default_buffer.pos;
+    //The order is important
+    if (sz == 0){
+    	return false;
+    }
+    if ( ValuePossible <= sz) {
+        ++default_buffer.stats.nfail;
+        default_buffer.stats.fail_size = sz; 
+    	return false;
+    }
+    if (default_buffer.pos + sz > default_buffer.size) {
+        // Not enough space left in default buffer for allocation
+        ++default_buffer.stats.nfail;
+        default_buffer.stats.fail_size = sz; 
+        return false;
+    }
+    
+    return true;
 
 }
 
