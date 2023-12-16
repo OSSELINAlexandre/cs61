@@ -12,6 +12,7 @@ struct m61_memory_buffer {
     char* buffer;
     size_t pos = 0;
     size_t size = 8 << 20; /* 8 MiB */
+    m61_statistics stats;
 
     m61_memory_buffer();
     ~m61_memory_buffer();
@@ -28,6 +29,8 @@ m61_memory_buffer::m61_memory_buffer() {
                                  // We want memory freshly allocated by the OS
     assert(buf != MAP_FAILED);
     this->buffer = (char*) buf;
+    this->stats.heap_min = ((uintptr_t) (buf));
+    this->stats.heap_max =((uintptr_t) (buf)) +  size;
 }
 
 m61_memory_buffer::~m61_memory_buffer() {
@@ -45,15 +48,22 @@ m61_memory_buffer::~m61_memory_buffer() {
 
 void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Your code here.
+    if (sz == 0){
+    	return nullptr;
+    }
     if (default_buffer.pos + sz > default_buffer.size) {
         // Not enough space left in default buffer for allocation
+        ++default_buffer.stats.nfail;
         return nullptr;
     }
 
     // Otherwise there is enough space; claim the next `sz` bytes
     void* ptr = &default_buffer.buffer[default_buffer.pos];
     default_buffer.pos += sz;
+    ++default_buffer.stats.nactive;
+    ++default_buffer.stats.ntotal;
+    default_buffer.stats.total_size += sz;
+    default_buffer.stats.active_size = default_buffer.pos;
     return ptr;
 }
 
@@ -65,9 +75,12 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 ///    `file`:`line`.
 
 void m61_free(void* ptr, const char* file, int line) {
-    // avoid uninitialized variable warnings
     (void) ptr, (void) file, (void) line;
     // Your code here. The handout code does nothing!
+    if (ptr == nullptr){
+    	return;
+    }
+    --default_buffer.stats.nactive;
 }
 
 
@@ -94,9 +107,7 @@ void* m61_calloc(size_t count, size_t sz, const char* file, int line) {
 m61_statistics m61_get_statistics() {
     // Your code here.
     // The handout code sets all statistics to enormous numbers.
-    m61_statistics stats;
-    memset(&stats, 255, sizeof(m61_statistics));
-    return stats;
+    return default_buffer.stats;
 }
 
 
