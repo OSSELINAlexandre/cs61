@@ -13,7 +13,8 @@ struct m61_memory_buffer {
     char* buffer;
     size_t pos = 0;
     size_t size = 8 << 20; /* 8 MiB */
-    std::map<void*, size_t> active_sizes;
+    size_t takenSize = 0;
+    std::map<void*, bool>   active_sizes;
     std::map<void*, size_t> size_allocation;
     m61_statistics stats;
 
@@ -34,6 +35,12 @@ m61_memory_buffer::m61_memory_buffer() {
     this->buffer = (char*) buf;
     this->stats.heap_min = ((uintptr_t) (buf));
     this->stats.heap_max =((uintptr_t) (buf)) +  size;
+    this->stats.nactive     = 0;
+    this->stats.active_size = 0;
+    this->stats.ntotal      = 0;
+    this->stats.total_size  = 0;
+    this->stats.nfail       = 0;
+    this->stats.fail_size   = 0;
 }
 
 m61_memory_buffer::~m61_memory_buffer() {
@@ -48,18 +55,48 @@ m61_memory_buffer::~m61_memory_buffer() {
 ///    The memory is not initialized. If `sz == 0`, then m61_malloc may
 ///    return either `nullptr` or a pointer to a unique allocation.
 ///    The allocation request was made at source code location `file`:`line`.
-
+void* thePtr;
 void* m61_malloc(size_t sz, const char* file, int line) {
-    (void) file, (void) line;   // avoid uninitialized variable warnings
+    (void) file, (void) line;   
+
 
     if (!checkIfPossibleToAllocate(sz)){
     	return nullptr;
     }
-    // Otherwise there is enough space; claim the next `sz` bytes
-    allocateInMaps(sz);
-    void* ptr = calculatePositionFor16AligementsBytes(sz);
-    computeStatistics(sz);
-    return ptr;
+
+    thePtr = m61_find_free_space(sz);
+    if (thePtr == nullptr){
+    	allocateInMaps(sz);
+    	thePtr = calculatePositionFor16AligementsBytes(sz);
+	++default_buffer.stats.nactive;
+    	default_buffer.stats.active_size += sz;
+    	++default_buffer.stats.ntotal;
+    	default_buffer.stats.total_size += sz;
+
+    }
+    return thePtr;
+}
+
+
+void* m61_find_free_space(size_t sz) {
+std::map<void*, size_t> freed_allocation_set;
+    for (auto& element : default_buffer.size_allocation)  {
+
+	    if( default_buffer.active_sizes.at(element.first) == true){
+	    	
+	    	if(element.second >= sz){
+		    	default_buffer.active_sizes.at(element.first) =  false;
+			++default_buffer.stats.nactive;
+			default_buffer.stats.active_size += element.second;
+			++default_buffer.stats.ntotal;
+			default_buffer.stats.total_size += sz;
+	    		return element.first;
+	    	}
+	    	
+	    }
+    }
+    
+    return nullptr;
 }
 
 
@@ -71,11 +108,25 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 
 void m61_free(void* ptr, const char* file, int line) {
     (void) ptr, (void) file, (void) line;
-    // Your code here. The handout code does nothing!
+    std::map<void*, bool>::iterator iterator; 
+    
     if (ptr == nullptr){
     	return;
     }
-    --default_buffer.stats.nactive;
+    iterator = default_buffer.active_sizes.find(ptr);
+    
+    if (iterator != default_buffer.active_sizes.end()){
+    
+        default_buffer.active_sizes.at(iterator->first) = true;
+        --default_buffer.stats.nactive;
+        default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);
+        
+    }else{
+    
+        return;
+    }
+	
+
 }
 
 
@@ -87,8 +138,8 @@ void m61_free(void* ptr, const char* file, int line) {
 ///    also return `nullptr` if `count == 0` or `size == 0`.
 size_t value = 0;
 void* m61_calloc(size_t count, size_t sz, const char* file, int line) {
-    // Your code here (not needed for first tests).
-    (void) file, (void) line;   // avoid uninitialized variable warnings
+
+    (void) file, (void) line;   
     value = default_buffer.size / count;
     
     if ( sz > value){
@@ -107,9 +158,6 @@ void* m61_calloc(size_t count, size_t sz, const char* file, int line) {
     return ptr;
 }
 
-
-/// m61_get_statistics()
-///    Return the current memory statistics.
 
 m61_statistics m61_get_statistics() {
     // Your code here.
@@ -139,44 +187,52 @@ void m61_print_leak_report() {
 }
 
 void allocateInMaps(size_t sz) {
-   /// default_buffer.size_allocation.insert(std::pair<void*,size_t>( default_buffer.pos, sz));
-  ///  default_buffer.active_sizes.insert(std::pair<void*,size_t>( default_buffer.pos,sz));
+    default_buffer.size_allocation.insert(std::pair<void*,size_t>(&default_buffer.buffer[default_buffer.pos], sz));
+    default_buffer.takenSize += sz;
+    //False mean it isn't available;
+    default_buffer.active_sizes.insert(std::pair<void*,size_t>(&default_buffer.buffer[default_buffer.pos],false));
+
 }
 
-void computeStatistics(size_t sz){
-    ++default_buffer.stats.nactive;
-    ++default_buffer.stats.ntotal;
-    default_buffer.stats.total_size += sz;
-    default_buffer.stats.active_size = default_buffer.stats.total_size  - default_buffer.stats.heap_min;
-}
-int valuefor16;
+
+
 void* calculatePositionFor16AligementsBytes(size_t sz){
-
+    int valuefor16;
     valuefor16 = 16 - ((default_buffer.pos + sz) % 16);
-    void* ptr = &default_buffer.buffer[default_buffer.pos];
+    void* ptrtwo = &default_buffer.buffer[default_buffer.pos];
     default_buffer.pos += (sz + valuefor16);
-   return ptr;
+    return ptrtwo;
 }
 
-size_t ValuePossible = 0;
+size_t number = 0;
 bool checkIfPossibleToAllocate(size_t sz){
-    ValuePossible = default_buffer.size - default_buffer.pos;
-    //The order is important
+    ++number;
+    size_t spaceLeftInBuffer  = 0;
+
+    //printf("In checkIfPossibleToAllocate => %ld\n" , number);
+    //spaceLeftInBuffer = default_buffer.size - default_buffer.pos;
+    
+    //printf("size wanted           => %ld \n", sz);    
+    //printf("Space left total      => %ld \n", default_buffer.takenSize - default_buffer.stats.active_size);
+    //printf("Space left max Buffer => %ld \n", spaceLeftInBuffer);
+
     if (sz == 0){
+    
     	return false;
+    	
     }
-    if ( ValuePossible <= sz) {
-        ++default_buffer.stats.nfail;
-        default_buffer.stats.fail_size = sz; 
-    	return false;
-    }
-    if (default_buffer.pos + sz > default_buffer.size) {
-        // Not enough space left in default buffer for allocation
-        ++default_buffer.stats.nfail;
-        default_buffer.stats.fail_size = sz; 
-        return false;
+    if ((default_buffer.size - default_buffer.pos < sz)){
+    
+    	if (((default_buffer.takenSize - default_buffer.stats.active_size) <  sz)){
+    	   ++default_buffer.stats.nfail;
+           default_buffer.stats.fail_size = sz; 
+    	   return false;
+    	}
+    
     }
     
+     //printf("! I'm not getting it !\n");
+     //printf("=========================\n");
     return true;
 
 }

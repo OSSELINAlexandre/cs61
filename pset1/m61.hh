@@ -48,7 +48,7 @@ void m61_print_statistics();
 ///    Print a report of all currently-active allocated blocks of dynamic
 ///    memory.
 void m61_print_leak_report();
-
+void* m61_find_free_space(size_t sz);
 
 /// This magic class lets standard C++ containers use your allocator
 /// instead of the system allocator.
@@ -83,7 +83,9 @@ inline T uniform_int(T min, T max, Engine& randomness) {
 ///Built by Me
 
 void* calculatePositionFor16AligementsBytes(size_t sz);
-void computeStatistics(size_t sz);
 void allocateInMaps(size_t sz);
 bool checkIfPossibleToAllocate(size_t sz);
+size_t AvailableSpace();
+size_t NumberOfAvailableSlots();
+size_t NumberOfTakenSlots();
 #endif
