@@ -22,6 +22,7 @@ int main() {
     void* ptrs[nmax];
     size_t n = 0;
     while (n != nmax) {
+    	//printf("n -> %ld \n", n); 
         ptrs[n] = m61_malloc(850);
         assert(ptrs[n]);
         ++n;

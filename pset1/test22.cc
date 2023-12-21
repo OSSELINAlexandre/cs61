@@ -6,6 +6,7 @@
 
 int main() {
     for (int i = 0; i != 10000; ++i) {
+    	//printf("i - > %d \n" , i);
         char* ptrs[5];
         for (int j = 0; j != 5; ++j) {
             ptrs[j] = (char*) m61_malloc(1000);
@@ -15,6 +16,7 @@ int main() {
             }
         }
         for (int j = 5; j != 0; --j) {
+            //printf("i - > %d  - j -> %d \n" , i, j);
             m61_free(ptrs[j - 1]);
         }
     }

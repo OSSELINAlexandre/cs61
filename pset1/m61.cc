@@ -106,7 +106,16 @@ std::map<void*, size_t> freed_allocation_set;
 ///    allocation returned by `m61_malloc`. The free was called at location
 ///    `file`:`line`.
 
+
 void m61_free(void* ptr, const char* file, int line) {
+
+bool coaleseBefore = false;
+bool coaleseAfter  = false;
+size_t sizeBefore  = 0;
+size_t sizeAfter   = 0;
+size_t sizeCurrent = 0;
+int    sizeWanted  = 0;
+
     (void) ptr, (void) file, (void) line;
     std::map<void*, bool>::iterator iterator; 
     
@@ -114,13 +123,84 @@ void m61_free(void* ptr, const char* file, int line) {
     	return;
     }
     iterator = default_buffer.active_sizes.find(ptr);
-    
     if (iterator != default_buffer.active_sizes.end()){
     
+        std::map<void*, bool>::iterator prevIterator = std::prev(iterator, 1);
+        std::map<void*, bool>::iterator nextIterator = std::next(iterator, 1);
+    	sizeCurrent = default_buffer.size_allocation.at(iterator->first);
+    
+        if(prevIterator != default_buffer.active_sizes.end()){
+       
+       	  if (default_buffer.active_sizes.at(prevIterator->first) == true) {
+          coaleseBefore = true;
+          sizeBefore = default_buffer.size_allocation.at(prevIterator->first);
+          }
+          
+        }
+        if(nextIterator != default_buffer.active_sizes.end() ){
+        
+          if (default_buffer.active_sizes.at(nextIterator->first) == true) {
+          coaleseAfter = true;
+          sizeAfter    = default_buffer.size_allocation.at(nextIterator->first);
+          }
+        }   
+        
+        if(coaleseBefore && coaleseAfter && !(sizeBefore >= 425) && !(sizeAfter >= 425)){
+        
+        default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);   
+        
+        default_buffer.size_allocation.erase(iterator->first);
+        default_buffer.size_allocation.erase(nextIterator->first);
+        default_buffer.active_sizes.erase(iterator->first);
+        default_buffer.active_sizes.erase(nextIterator->first);
+        
+        default_buffer.size_allocation.at(prevIterator->first) = ( sizeAfter + sizeCurrent + sizeBefore);
+        default_buffer.active_sizes.at(prevIterator->first) = true;
+        --default_buffer.stats.nactive;
+        return;
+        
+        }else if (coaleseBefore && !coaleseAfter && !(sizeBefore >= 850)){
+        
+        default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);   
+        
+        default_buffer.size_allocation.erase(iterator->first);
+        default_buffer.active_sizes.erase(iterator->first);
+        
+        default_buffer.size_allocation.at(prevIterator->first) = ( sizeCurrent + sizeBefore);
+        default_buffer.active_sizes.at(prevIterator->first) = true;
+        --default_buffer.stats.nactive;
+        return;
+        
+        }else if (!coaleseBefore && coaleseAfter && !(sizeAfter >= 850)){
+        
+        default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);   
+        
+        default_buffer.size_allocation.erase(nextIterator->first);
+        default_buffer.active_sizes.erase(nextIterator->first);
+        
+        default_buffer.size_allocation.at(iterator->first) = (sizeAfter + sizeCurrent);
+        default_buffer.active_sizes.at(iterator->first) = true;
+        --default_buffer.stats.nactive;
+        return;
+        
+        }
+        
+        if (sizeCurrent >= 5000) {
+        
+        sizeWanted = sizeCurrent / 1000;
+		for (int i = 0 ; i != sizeWanted ; i++) {
+		
+		default_buffer.size_allocation.insert(std::pair<void*,size_t>(iterator->first + (i * 1000), 1000)); 
+                default_buffer.active_sizes.insert(std::pair<void*,size_t>(iterator->first + (i * 1000), true));
+		}      
+	  	default_buffer.size_allocation.insert(std::pair<void*,size_t>(iterator->first + (sizeWanted * 1000), (sizeCurrent - (sizeWanted * 1000)))); 
+                default_buffer.active_sizes.insert(std::pair<void*,size_t>(iterator->first + (sizeWanted * 1000), true));
+        }
+        
         default_buffer.active_sizes.at(iterator->first) = true;
         --default_buffer.stats.nactive;
         default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);
-        
+        return;
     }else{
     
         return;
@@ -207,7 +287,6 @@ void* calculatePositionFor16AligementsBytes(size_t sz){
 size_t number = 0;
 bool checkIfPossibleToAllocate(size_t sz){
     ++number;
-    size_t spaceLeftInBuffer  = 0;
 
     //printf("In checkIfPossibleToAllocate => %ld\n" , number);
     //spaceLeftInBuffer = default_buffer.size - default_buffer.pos;
