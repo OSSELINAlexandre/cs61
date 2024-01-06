@@ -7,7 +7,7 @@
 #include <cassert>
 #include <sys/mman.h>
 #include <map>
-
+#include <iostream>
 
 struct m61_memory_buffer {
     char* buffer;
@@ -47,19 +47,13 @@ m61_memory_buffer::~m61_memory_buffer() {
     munmap(this->buffer, this->size);
 }
 
-
-
-
-/// m61_malloc(sz, file, line)
-///    Returns a pointer to `sz` bytes of freshly-allocated dynamic memory.
-///    The memory is not initialized. If `sz == 0`, then m61_malloc may
-///    return either `nullptr` or a pointer to a unique allocation.
-///    The allocation request was made at source code location `file`:`line`.
 void* thePtr;
 void* m61_malloc(size_t sz, const char* file, int line) {
+
+
     (void) file, (void) line;   
 
-
+    //printf("Malloc Starting point  ->  value %ld \n", sz );
     if (!checkIfPossibleToAllocate(sz)){
     	return nullptr;
     }
@@ -72,6 +66,7 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     	default_buffer.stats.active_size += sz;
     	++default_buffer.stats.ntotal;
     	default_buffer.stats.total_size += sz;
+    	//printf("After Allocation ->  first -> %p , second -> %d \n", default_buffer.active_sizes.find(thePtr)->first , default_buffer.active_sizes.find(thePtr)->second);
 
     }
     return thePtr;
@@ -79,11 +74,24 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 
 
 void* m61_find_free_space(size_t sz) {
+
+bool theLastWasTrue = false;
+size_t freedSpace = 0;
+size_t lastAttempt = 0;
+void* key;
+std::map<void*, bool>::iterator   iteratorOnActive;
+std::map<void*, size_t>::iterator element;
 std::map<void*, size_t> freed_allocation_set;
+
+ 
     for (auto& element : default_buffer.size_allocation)  {
 
 	    if( default_buffer.active_sizes.at(element.first) == true){
-	    	
+	    
+	    	if (!theLastWasTrue) {
+	    	    key = element.first;
+	    	}
+	    	theLastWasTrue = true;
 	    	if(element.second >= sz){
 		    	default_buffer.active_sizes.at(element.first) =  false;
 			++default_buffer.stats.nactive;
@@ -93,7 +101,60 @@ std::map<void*, size_t> freed_allocation_set;
 	    		return element.first;
 	    	}
 	    	
+	    	
+	    	
+	    }else{
+	      theLastWasTrue = false; 
+	    
 	    }
+       }
+       
+       if (theLastWasTrue){
+           coaleseWithValueBefore(key);
+           return nullptr;
+       }
+    
+    
+    size_t currentAvailableSize = default_buffer.stats.total_size - default_buffer.takenSize;
+    size_t currentSizeTotalAvailable = default_buffer.stats.total_size - default_buffer.stats.active_size;
+    
+    if((sz >= currentAvailableSize ) && (sz <= currentSizeTotalAvailable)){
+
+        
+    mainLoop:
+    for (element = default_buffer.size_allocation.begin() ; element != default_buffer.size_allocation.end(); element++) {
+
+	    if( default_buffer.active_sizes.at(element->first) == true){
+	    	
+
+		for (iteratorOnActive = default_buffer.active_sizes.find(element->first); iteratorOnActive != default_buffer.active_sizes.end(); iteratorOnActive++){
+		
+	             if( default_buffer.active_sizes.at(iteratorOnActive->first) == true){
+	             
+	             	freedSpace += default_buffer.size_allocation.at(iteratorOnActive->first);
+	             	lastAttempt++;
+	             	
+	             }else{
+	             	lastAttempt = 0;
+	                freedSpace  = 0;
+    	                std::advance(element,lastAttempt);
+	             	goto mainLoop;
+	             }
+	             
+	             if(freedSpace >= sz) {
+	                modyfingTheMaps(element->first,freedSpace);
+	                changingStatistics(freedSpace, sz); 
+			return element->first;
+	             
+	             }
+		
+		}
+	    	
+	  }
+       }
+       
+       return nullptr;
+    
     }
     
     return nullptr;
@@ -122,9 +183,16 @@ int    sizeWanted  = 0;
     if (ptr == nullptr){
     	return;
     }
+        for (auto& element : default_buffer.active_sizes)  {
+        
+//        	printf("What is free ? -> first %p -> second %d -> size %ld \n", element.first, element.second, default_buffer.size_allocation.at(element.first) );
+        
+        }
+        
     iterator = default_buffer.active_sizes.find(ptr);
+//          printf("always printed         -> value %p , available %d , ptr = %p \n", iterator->first, iterator->second, ptr);
     if (iterator != default_buffer.active_sizes.end()){
-    
+//          printf("right boucle           -> value %p , available %d , ptr = %p \n", iterator->first, iterator->second, ptr);
         std::map<void*, bool>::iterator prevIterator = std::prev(iterator, 1);
         std::map<void*, bool>::iterator nextIterator = std::next(iterator, 1);
     	sizeCurrent = default_buffer.size_allocation.at(iterator->first);
@@ -144,11 +212,17 @@ int    sizeWanted  = 0;
           sizeAfter    = default_buffer.size_allocation.at(nextIterator->first);
           }
         }   
+        //printf("coalese after -> %d , coalese before %d \n", coaleseAfter, coaleseBefore);
         
-        if(coaleseBefore && coaleseAfter && !(sizeBefore >= 425) && !(sizeAfter >= 425)){
+        if(coaleseBefore && coaleseAfter && !(sizeBefore >= 850) && !(sizeAfter >= 850)){
         
-        default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);   
+        for (auto& element : default_buffer.active_sizes)  {
         
+        //	printf("BOTH Value -> first %p -> second %d \n", element.first, element.second );
+        
+        }
+        //printf("ERASING m61_free-> %p\n" , iterator->first);
+        //printf("ERASING m61_free-> %p\n" , nextIterator->first);
         default_buffer.size_allocation.erase(iterator->first);
         default_buffer.size_allocation.erase(nextIterator->first);
         default_buffer.active_sizes.erase(iterator->first);
@@ -156,31 +230,47 @@ int    sizeWanted  = 0;
         
         default_buffer.size_allocation.at(prevIterator->first) = ( sizeAfter + sizeCurrent + sizeBefore);
         default_buffer.active_sizes.at(prevIterator->first) = true;
+        
         --default_buffer.stats.nactive;
+        default_buffer.stats.active_size -= sizeCurrent;
+
         return;
         
         }else if (coaleseBefore && !coaleseAfter && !(sizeBefore >= 850)){
+        for (auto& element : default_buffer.active_sizes)  {
         
-        default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);   
+        //	printf("NOT AFTER Value -> first %p -> second %d \n", element.first, element.second );
         
+        }
+        //printf("ERASING -> %p\n" , iterator->first);
         default_buffer.size_allocation.erase(iterator->first);
         default_buffer.active_sizes.erase(iterator->first);
         
         default_buffer.size_allocation.at(prevIterator->first) = ( sizeCurrent + sizeBefore);
         default_buffer.active_sizes.at(prevIterator->first) = true;
+        
         --default_buffer.stats.nactive;
+        default_buffer.stats.active_size -= sizeCurrent;
+        
         return;
         
         }else if (!coaleseBefore && coaleseAfter && !(sizeAfter >= 850)){
         
-        default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);   
+        for (auto& element : default_buffer.active_sizes)  {
         
+        //	printf("NOT BEFORE Value -> first %p -> second %d \n", element.first, element.second );
+        
+        }
+        //        printf("ERASING m61_free end-> %p\n" , iterator->first);
         default_buffer.size_allocation.erase(nextIterator->first);
         default_buffer.active_sizes.erase(nextIterator->first);
         
         default_buffer.size_allocation.at(iterator->first) = (sizeAfter + sizeCurrent);
         default_buffer.active_sizes.at(iterator->first) = true;
+        
         --default_buffer.stats.nactive;
+        default_buffer.stats.active_size -= sizeCurrent;
+        
         return;
         
         }
@@ -188,13 +278,13 @@ int    sizeWanted  = 0;
         if (sizeCurrent >= 5000) {
         
         sizeWanted = sizeCurrent / 1000;
-		for (int i = 0 ; i != sizeWanted ; i++) {
+	for (int i = 0 ; i != sizeWanted ; i++) {
 		
-		default_buffer.size_allocation.insert(std::pair<void*,size_t>(iterator->first + (i * 1000), 1000)); 
-                default_buffer.active_sizes.insert(std::pair<void*,size_t>(iterator->first + (i * 1000), true));
-		}      
-	  	default_buffer.size_allocation.insert(std::pair<void*,size_t>(iterator->first + (sizeWanted * 1000), (sizeCurrent - (sizeWanted * 1000)))); 
-                default_buffer.active_sizes.insert(std::pair<void*,size_t>(iterator->first + (sizeWanted * 1000), true));
+	default_buffer.size_allocation.insert(std::pair<void*,size_t>(iterator->first + (i * 1000), 1000)); 
+        default_buffer.active_sizes.insert(std::pair<void*,size_t>(iterator->first + (i * 1000), true));
+	}      
+	default_buffer.size_allocation.insert(std::pair<void*,size_t>(iterator->first + (sizeWanted * 1000), (sizeCurrent - (sizeWanted * 1000)))); 
+        default_buffer.active_sizes.insert(std::pair<void*,size_t>(iterator->first + (sizeWanted * 1000), true));
         }
         
         default_buffer.active_sizes.at(iterator->first) = true;
@@ -202,8 +292,14 @@ int    sizeWanted  = 0;
         default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);
         return;
     }else{
-    
-        return;
+        for (auto& element : default_buffer.active_sizes)  {
+        
+        //	printf("Value -> first %p -> second %d \n", element.first, element.second );
+        
+        }
+    		
+        //  printf("wrong boucle ?         -> value %p , available %d , ptr = %p \n", iterator->first, iterator->second, ptr);
+      return;
     }
 	
 
@@ -288,31 +384,83 @@ size_t number = 0;
 bool checkIfPossibleToAllocate(size_t sz){
     ++number;
 
-    //printf("In checkIfPossibleToAllocate => %ld\n" , number);
-    //spaceLeftInBuffer = default_buffer.size - default_buffer.pos;
-    
-    //printf("size wanted           => %ld \n", sz);    
-    //printf("Space left total      => %ld \n", default_buffer.takenSize - default_buffer.stats.active_size);
-    //printf("Space left max Buffer => %ld \n", spaceLeftInBuffer);
 
+    size_t spaceLeftInBuffer = default_buffer.size - default_buffer.pos;
+    /*
+    printf("In checkIfPossibleToAllocate => %ld\n" , number);    
+    printf("size wanted           => %ld \n", sz);    
+    printf("Space left total      => %lld \n", default_buffer.takenSize - default_buffer.stats.active_size);
+    printf("Space left max Buffer => %ld \n", spaceLeftInBuffer);
+    printf("verification : takenSize : %lld ||  POS %lld \n ", default_buffer.takenSize , default_buffer.pos);
+    */
+    
     if (sz == 0){
     
     	return false;
     	
     }
-    if ((default_buffer.size - default_buffer.pos < sz)){
+    if( (spaceLeftInBuffer +  (default_buffer.takenSize - default_buffer.stats.active_size)) >= sz){
+        /*printf("supposed to get there with big amount => %ld \n", sz);*/
+        return true;
+    }
     
+    if ((default_buffer.size - default_buffer.pos < sz)){  
     	if (((default_buffer.takenSize - default_buffer.stats.active_size) <  sz)){
+    	
     	   ++default_buffer.stats.nfail;
            default_buffer.stats.fail_size = sz; 
     	   return false;
     	}
     
     }
-    
-     //printf("! I'm not getting it !\n");
-     //printf("=========================\n");
+
     return true;
+
+}
+
+void coaleseWithValueBefore(void* key){
+          std::map<void*, size_t> copyMap = default_buffer.size_allocation;
+          std::map<void*, size_t>::iterator element;
+       	  for (element = default_buffer.size_allocation.find(key) ; element != default_buffer.size_allocation.end(); element++){
+//       	          printf("ERASING theLastWasTrue -> %p\n" , element->first);
+       	  	default_buffer.active_sizes.erase(element->first);
+       	  	copyMap.erase(element->first);
+       	  	default_buffer.pos -= element->second;
+       	  }
+       	  default_buffer.size_allocation = copyMap;
+       	  
+}
+
+void modyfingTheMaps(void* key ,size_t sizeFreed){
+//printf("F=>modyfingTheMaps | key %p , sizeFreed %ld", key, sizeFreed0)"
+        default_buffer.size_allocation.at(key) = sizeFreed;
+        std::map<void*, bool>::iterator iterator = default_buffer.active_sizes.find(key);
+        std::map<void*, bool> copyMap = default_buffer.active_sizes;
+        iterator++;
+	for (; iterator != default_buffer.active_sizes.end(); iterator++){
+             
+             if (default_buffer.active_sizes.find(iterator->first) != default_buffer.active_sizes.end()){
+             	 
+		 default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);
+//				         printf("ERASING freedSpace-> %p\n" , iterator->first);
+		 default_buffer.size_allocation.erase(iterator->first);
+		 copyMap.erase(iterator->first);
+
+         
+         }
+         }
+         
+         
+        default_buffer.active_sizes = copyMap;
+        default_buffer.active_sizes.at(key) = false;
+
+}
+void changingStatistics(size_t newSize, size_t sz){
+
+	++default_buffer.stats.nactive;
+	default_buffer.stats.active_size += newSize;
+	++default_buffer.stats.ntotal;
+	default_buffer.stats.total_size += sz;
 
 }
 
