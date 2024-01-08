@@ -26,6 +26,7 @@ int main() {
     }
 
     void* bigptr = m61_malloc(6091950);
+
     assert(bigptr);
     m61_free(bigptr);
 

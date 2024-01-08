@@ -38,8 +38,10 @@ int main() {
     }
 
     for (int i = 0; i != nptrs; ++i) {
+
         m61_free(ptrs[i]);
     }
+    
 
     m61_print_statistics();
 }

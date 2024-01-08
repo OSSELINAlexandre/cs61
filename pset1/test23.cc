@@ -28,6 +28,7 @@ int main() {
             char* ptr = (char*) m61_malloc(size);
             assert(ptr);
             for (size_t k = 0; k != n; ++k) {
+printf("See the values at i -> %d : -> ptrs[k] + sizes[k] : %p \t-> ptr : %p -> ptr + size : %p \n ", i , ( ptrs[k] + sizes[k])  , ptr , ptr + size);
                 assert(ptrs[k] + sizes[k] <= ptr || ptr + size <= ptrs[k]);
             }
             ptrs[n] = ptr;

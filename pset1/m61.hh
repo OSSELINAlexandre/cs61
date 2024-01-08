@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <new>
 #include <random>
-
+#include <map>
 
 /// m61_malloc(sz, file, line)
 ///    Return a pointer to `sz` bytes of newly-allocated dynamic memory.
@@ -91,5 +91,8 @@ size_t NumberOfTakenSlots();
 void   coaleseWithValueBefore(void* key);
 void   modyfingTheMaps(void* key ,size_t sizeFreed);
 void   changingStatistics(size_t newSize, size_t sz);
+void   createStatistics(std::map<void*, size_t>::iterator element, size_t sz);
+void   eraseInBothMaps(void* key);
+void   slicingTheCurrentMemory(void* key, size_t sizeCurrent, int sliceWanted );
 
 #endif

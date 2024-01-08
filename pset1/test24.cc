@@ -26,12 +26,10 @@ int main() {
 
     if (n > 0) {
         size_t f = n / 2;
-        //printf("test 24 : d-> %ldd \n" , n);
-        //printf("test 24 : f-> %ldd \n" , f);
         check_contents(ptrs[f], f & 255);
         m61_free(ptrs[f]);
         ptrs[f] = (unsigned char*) m61_malloc(850);
-        //printf("test 24 : malloc -> %p\n" , ptrs[f]);
+
         assert(ptrs[f]);
         memset(ptrs[f], f & 255, 10);
     }
