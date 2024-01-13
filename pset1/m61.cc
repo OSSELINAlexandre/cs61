@@ -41,7 +41,7 @@ m61_memory_buffer::m61_memory_buffer() {
     this->stats.total_size  = 0;
     this->stats.nfail       = 0;
     this->stats.fail_size   = 0;
-    this->maxPagesCoalesce  = 848;
+    this->maxPagesCoalesce  = 850;
 }
 
 m61_memory_buffer::~m61_memory_buffer() {
@@ -67,7 +67,8 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     if (thePtr == nullptr){
     	int valuefor16;
 	valuefor16 = 16 - ((default_buffer.pos + sz) % 16);
-    	allocateInMaps((sz + valuefor16));
+	//printf("value 16 => %ld \n" , valuefor16);
+    	allocateInMaps(sz);
     	//thePtr = calculatePositionFor16AligementsBytes(sz);
 	thePtr = &default_buffer.buffer[default_buffer.pos];
         default_buffer.pos += (sz + valuefor16);
@@ -314,8 +315,9 @@ void m61_print_leak_report() {
 // ======================================================
 
 void allocateInMaps(size_t sz) {
-    //printf("allocateInMaps -> %ld \n", sz);
+
     default_buffer.size_allocation.insert(std::pair<void*,size_t>(&default_buffer.buffer[default_buffer.pos], sz));
+    //printf("allocateInMaps -> %ld , pos => %ld max => %ld \n", sz , default_buffer.pos , default_buffer.size);
     //default_buffer.takenSize += sz;
     default_buffer.active_sizes.insert(std::pair<void*,size_t>(&default_buffer.buffer[default_buffer.pos],false));
 
