@@ -13,7 +13,7 @@ struct m61_memory_buffer {
     char* buffer;
     size_t pos = 0;
     size_t size = 8 << 20; /* 8 MiB */
-    //size_t takenSize = 0;
+    size_t active_size_reached = 0;
     std::map<void*, bool>   active_sizes;
     std::map<void*, size_t> size_allocation;
     m61_statistics stats;
@@ -65,6 +65,7 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 
     thePtr = m61_find_free_space(sz);
     if (thePtr == nullptr){
+    
     	int valuefor16;
 	valuefor16 = 16 - ((default_buffer.pos + sz) % 16);
 	//printf("value 16 => %ld \n" , valuefor16);
@@ -72,8 +73,9 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     	//thePtr = calculatePositionFor16AligementsBytes(sz);
 	thePtr = &default_buffer.buffer[default_buffer.pos];
         default_buffer.pos += (sz + valuefor16);
+        default_buffer.active_size_reached += sz;
 	++default_buffer.stats.nactive;
-    	default_buffer.stats.active_size += sz ;
+    	default_buffer.stats.active_size += sz;
     	++default_buffer.stats.ntotal;
     	default_buffer.stats.total_size += sz;
     }
@@ -94,11 +96,10 @@ std::map<void*, bool>::iterator   iteratorOnActive;
 std::map<void*, size_t>::iterator element;
 std::map<void*, size_t> freed_allocation_set;
 
-    //printf("m61_find_free_space : sz -> %ld \n", sz);
+
     mainLoop:
     for (element = default_buffer.size_allocation.begin() ; element != default_buffer.size_allocation.end(); element++) {
 
-	    //printf("m61_find_free_space : -> default.loop element->first %p, element->second %d \n", element->first, default_buffer.active_sizes.at(element->first));
 	    
 	    if( default_buffer.active_sizes.at(element->first) == true){
 	    
@@ -109,7 +110,7 @@ std::map<void*, size_t> freed_allocation_set;
 	    	
 	    	if(element->second >= sz){
 	    	        createStatistics(element, sz);
-	    	        //printf("m61_find_free_space : -> element->second >= sz \n", sz);
+
 	    		return element->first;
 	    	}
 	    	
@@ -117,16 +118,16 @@ std::map<void*, size_t> freed_allocation_set;
 		
 	             if( default_buffer.active_sizes.at(iteratorOnActive->first) == true){
 	             	freedSpace += default_buffer.size_allocation.at(iteratorOnActive->first);
-	                //printf("m61_find_free_space : found freedSpace %ld \n" , freedSpace);
+
 	             }else{
-	                //printf("m61_find_free_space : -> iteratorOnActive-> false -freedSpace %ld \n" , freedSpace);
+
 	                freedSpace  = 0;
 	                theLastWasTrue = false;
 	                break;
 	             }
 	             
 	             if(freedSpace >= sz) {
-	              	//printf("m61_find_free_space : -> found a spot freedSpace -> %ld for sz -> %ld at -> %p !\n" , freedSpace, sz, element->first,freedSpace);
+	              	
 	                modyfingTheMaps(element->first,freedSpace);
 	                changingStatistics(freedSpace, sz); 
 			return element->first;
@@ -135,13 +136,13 @@ std::map<void*, size_t> freed_allocation_set;
 		}
                freedSpace  = 0;
 	  }else{
-	   //printf("m61_find_free_space -> myGUESS is here \n");
+
 	   theLastWasTrue = false;
 	  }
        }
        
       if (theLastWasTrue){
-           //printf("m61_find_free_space : -> coaleseWithValueBefore ! \n");
+
            coaleseWithValueBefore(key);
        }
        
@@ -170,7 +171,7 @@ std::map<void*, bool>::iterator iterator;
     	return;
     }
 
-   //printf("Liberated pointer : -> %p , of size %ld \n", ptr, default_buffer.size_allocation.at(ptr));     
+
     iterator = default_buffer.active_sizes.find(ptr);
     if (iterator != default_buffer.active_sizes.end()){
     
@@ -196,7 +197,7 @@ std::map<void*, bool>::iterator iterator;
 
         
         if(coaleseBefore && coaleseAfter && !(sizeBefore >= default_buffer.maxPagesCoalesce) && !(sizeAfter >= default_buffer.maxPagesCoalesce)){
-        //printf("CoaleseBefore & CoaleseAfter : -> %p \n", ptr);     
+
         eraseInBothMaps(iterator->first);
         eraseInBothMaps(nextIterator->first);
 
@@ -209,7 +210,7 @@ std::map<void*, bool>::iterator iterator;
         return;
         
         }else if (coaleseBefore && !coaleseAfter && !(sizeBefore >= default_buffer.maxPagesCoalesce)){
-        //printf("CoaleseBefore  : -> %p \n", ptr);     
+
         eraseInBothMaps(iterator->first);
         
         default_buffer.size_allocation.at(prevIterator->first) = (sizeCurrent + sizeBefore);
@@ -221,7 +222,7 @@ std::map<void*, bool>::iterator iterator;
         return;
         
         }else if (!coaleseBefore && coaleseAfter && !(sizeAfter >= default_buffer.maxPagesCoalesce)){
-        //printf("coaleseAfter  : -> %p \n", ptr);     
+
 	eraseInBothMaps(nextIterator->first);
 	
 	default_buffer.size_allocation.at(iterator->first) = (sizeAfter + sizeCurrent); 
@@ -238,7 +239,7 @@ std::map<void*, bool>::iterator iterator;
         slicingTheCurrentMemory(iterator->first, sizeCurrent, 992);
         
         }
-        //printf("No option found in free  : -> %p \n", ptr);     
+
         default_buffer.active_sizes.at(iterator->first) = true;
         --default_buffer.stats.nactive;
         default_buffer.stats.active_size -= sizeCurrent;
@@ -317,8 +318,7 @@ void m61_print_leak_report() {
 void allocateInMaps(size_t sz) {
 
     default_buffer.size_allocation.insert(std::pair<void*,size_t>(&default_buffer.buffer[default_buffer.pos], sz));
-    //printf("allocateInMaps -> %ld , pos => %ld max => %ld \n", sz , default_buffer.pos , default_buffer.size);
-    //default_buffer.takenSize += sz;
+
     default_buffer.active_sizes.insert(std::pair<void*,size_t>(&default_buffer.buffer[default_buffer.pos],false));
 
 }
@@ -326,7 +326,10 @@ void allocateInMaps(size_t sz) {
 
 
 void* calculatePositionFor16AligementsBytes(size_t sz){
-    /*int valuefor16;
+
+  
+    /* == what i wrote
+    int valuefor16;
     valuefor16 = 16 - ((default_buffer.pos + sz) % 16);
     void* ptrtwo = &default_buffer.buffer[default_buffer.pos];
     default_buffer.pos += (sz + valuefor16);
@@ -345,11 +348,17 @@ bool checkIfPossibleToAllocate(size_t sz){
     	return false;
     	
     }
-    if( (spaceLeftInBuffer +  (default_buffer.pos - default_buffer.stats.active_size)) >= sz){
+    
+    if( (spaceLeftInBuffer +  (default_buffer.active_size_reached - default_buffer.stats.active_size)) >= sz){
         return true;
+    }else{
+           ++default_buffer.stats.nfail;
+           default_buffer.stats.fail_size = sz; 
+    	   return false;
+    
     }
     
-    if ((default_buffer.size - default_buffer.pos < sz)){  
+    /*if ((default_buffer.size - default_buffer.pos < sz)){  
     	if (((default_buffer.pos - default_buffer.stats.active_size) <  sz)){
     	
     	   ++default_buffer.stats.nfail;
@@ -359,7 +368,7 @@ bool checkIfPossibleToAllocate(size_t sz){
     
     }
 
-    return true;
+    return true;*/
 
 }
 
@@ -385,7 +394,6 @@ void modyfingTheMaps(void* key ,size_t sizeFreed){
         ++iterator;
 	for (; iterator != default_buffer.active_sizes.end(); iterator++){
              if (iterator->second == true){
-		 //default_buffer.stats.active_size -= default_buffer.size_allocation.at(iterator->first);
 		 default_buffer.size_allocation.erase(iterator->first);
 		 copyMap.erase(iterator->first);         
              }else{
@@ -428,13 +436,13 @@ void slicingTheCurrentMemory(void* key, size_t sizeCurrent, int sliceWanted){
 		
 		default_buffer.size_allocation.insert(std::pair<void*,size_t>(key + (i * sliceWanted), sliceWanted)); 
 		default_buffer.active_sizes.insert(std::pair<void*,size_t>(key + (i * sliceWanted), true));
-		//printf("CreatedSlice : -> %p of value %d \n", key + (i * sliceWanted) , sliceWanted);
+
 	}
 	
 	if(sizeCurrent - (sizeWanted * sliceWanted) > 0 ){      
 		default_buffer.size_allocation.insert(std::pair<void*,size_t>(key + (sizeWanted * sliceWanted), (sizeCurrent - (sizeWanted * sliceWanted)))); 
         	default_buffer.active_sizes.insert(std::pair<void*,size_t>(key + (sizeWanted * sliceWanted), true));
-        	//printf("LastSlice :  sizeWanted -> %ld value -> %ld \n",sizeWanted,  sizeCurrent - (sizeWanted * sliceWanted));
+
         }
 }
 
